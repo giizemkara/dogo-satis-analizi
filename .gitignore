@@ -216,3 +216,23 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Python / Sistem Çöpleri
+*.py[cod]
+.DS_Store
+Thumbs.db
+
+# Sanal Ortam (Virtual Environment)
+env/
+venv/
+.venv/
+
+# Veri Dosyaları (Müşteri ve Ham Veriler GitHub'a GİTMEMELİ!)
+data/raw/
+data/processed/
+*.xlsx
+*.csv
+
+# IDE / VS Code Ayarları
+.vscode/
+.ipynb_checkpoints/
