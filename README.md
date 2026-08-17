@@ -74,7 +74,7 @@ Veri hazırlama ve model eğitimini tek komutta çalıştırır.
 Ham veriler değiştiğinde:
 
 ```powershell
-cd C:\Users\gizem\DOGO_StajVerileri\dogo-satis-analizi
+cd ..\dogo-satis-analizi
 .\env\Scripts\python.exe -m src.run_pipeline
 ```
 

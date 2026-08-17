@@ -236,3 +236,5 @@ data/processed/
 # IDE / VS Code Ayarları
 .vscode/
 .ipynb_checkpoints/
+
+SUNUM_NOTLARI.md/

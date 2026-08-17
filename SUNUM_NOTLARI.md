@@ -1,7 +1,3 @@
-# Yönetici Sunumu İçin Kısa Anlatım
-
-## Sunum başlığı
-
 **DOGO Satış ve İade Verilerinin Analizi: İade Nedenleri, Satış Tahmini ve İptal Riski**
 
 ## 1. Problem
