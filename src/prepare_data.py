@@ -75,13 +75,15 @@ def add_date_features(df, date_column, prefix):
     return df
 
 
-def build_processed_files():
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+def build_processed_files(raw_dir=None, processed_dir=None):
+    raw_dir = Path(raw_dir) if raw_dir else RAW_DIR
+    processed_dir = Path(processed_dir) if processed_dir else PROCESSED_DIR
+    processed_dir.mkdir(parents=True, exist_ok=True)
 
-    teslim = clean_dataframe(pd.read_excel(RAW_DIR / "dogo_teslim_edilenler.xlsx"))
-    iptal = clean_dataframe(pd.read_excel(RAW_DIR / "dogo_iptal.xlsx"))
-    iade = clean_dataframe(pd.read_excel(RAW_DIR / "dogo_iade.xlsx"))
-    iade_detail = clean_dataframe(pd.read_excel(RAW_DIR / "dogo_iade_aciklamali.xlsx"))
+    teslim = clean_dataframe(pd.read_excel(raw_dir / "dogo_teslim_edilenler.xlsx"))
+    iptal = clean_dataframe(pd.read_excel(raw_dir / "dogo_iptal.xlsx"))
+    iade = clean_dataframe(pd.read_excel(raw_dir / "dogo_iade.xlsx"))
+    iade_detail = clean_dataframe(pd.read_excel(raw_dir / "dogo_iade_aciklamali.xlsx"))
 
     teslim["source_dataset"] = "teslim"
     iptal["source_dataset"] = "iptal"
@@ -197,44 +199,28 @@ def build_processed_files():
 
     final_df = df.drop(columns=[column for column in drop_columns if column in df.columns]).copy()
 
-    safe_model_columns = [
-        "siparis_no", "tarih", "order_date", "order_year", "order_month",
-        "order_day", "order_day_of_week", "order_week_of_year", "order_quarter",
-        "order_is_weekend", "order_hour", "order_minute", "order_month_sin",
-        "order_month_cos", "order_day_of_week_sin", "order_day_of_week_cos",
-        "order_hour_sin", "order_hour_cos", "tutar", "kdv", "kargo_toplami",
-        "hizmet_bedeli", "kargo", "amount_missing", "doviz_cinsi", "odeme_tipi",
-        "banka", "kart", "pos", "platform", "kaynak", "araci", "il_teslimat",
-        "ilce_teslimat", "ulke_teslimat", "hediye_ceki", "kampanya",
-        "is_gift_voucher", "is_offer",
-    ]
-    safe_model_columns = [column for column in safe_model_columns if column in final_df.columns]
-    model_features = final_df[safe_model_columns].copy()
-
     quality = pd.DataFrame({
         "metric": [
             "core_row_count", "core_unique_order_count", "excluded_usd_eur_count",
             "final_tl_row_count", "return_detail_unique_order_count",
             "unmatched_return_order_count", "missing_invoice_date_count",
-            "missing_amount_count", "cancelled_count", "returned_count", "delivered_count",
+            "missing_amount_count", "invalid_order_date_count", "negative_amount_count",
+            "unknown_status_count", "cancelled_count", "returned_count", "delivered_count",
         ],
         "value": [
             len(core), core["siparis_no"].nunique(), int(foreign_mask.sum()), len(final_df),
             iade_detail["siparis_no"].nunique(), unmatched["siparis_no"].nunique(),
             int(final_df["fatura_tarihi"].isna().sum()), int(final_df["tutar"].isna().sum()),
+            int(final_df["order_date"].isna().sum()), int(final_df["tutar"].lt(0).sum()),
+            int((~final_df["status_norm"].isin(["teslim edildi", "iptal edildi", "iade edildi"])).sum()),
             int(final_df["is_cancelled"].sum()), int(final_df["is_returned"].sum()),
             int(final_df["is_delivered"].sum()),
         ],
     })
 
-    with pd.ExcelWriter(PROCESSED_DIR / "merge_data.xlsx", engine="openpyxl") as writer:
+    with pd.ExcelWriter(processed_dir / "merge_data.xlsx", engine="openpyxl") as writer:
         final_df.to_excel(writer, sheet_name="orders", index=False)
         quality.to_excel(writer, sheet_name="quality_report", index=False)
-
-    model_features.to_excel(
-        PROCESSED_DIR / "model_features_pre_order.xlsx",
-        index=False,
-    )
 
     if not unmatched.empty:
         columns = [
@@ -243,7 +229,7 @@ def build_processed_files():
         ]
         columns = [column for column in columns if column in unmatched.columns]
         unmatched[columns].to_excel(
-            PROCESSED_DIR / "unmatched_return_requests.xlsx",
+            processed_dir / "unmatched_return_requests.xlsx",
             index=False,
         )
 

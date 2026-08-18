@@ -1,144 +1,127 @@
-# DOGO Satış, İade ve Tahmin Analizi
+# DOGO Sipariş ve İade İçgörüleri
 
-Bu proje DOGO sipariş verilerini kullanarak üç çıktıya odaklanır:
+Bu proje, DOGO sipariş verilerini geleceği kesin tahmin etmek için değil, mevcut davranışları ölçülebilir ve açıklanabilir biçimde incelemek için kullanır.
 
-1. Satış ve sipariş trendlerini anlamak.
-2. İade açıklamalarını NLP ile neden ve ürün tipi kategorilerine ayırmak.
-3. İptal riskini ve gelecek dönem satışlarını başlangıç seviyesinde tahmin etmek.
+Projenin iki ana çıktısı vardır:
 
-## Proje çıktıları
+1. Şehir, ödeme tipi, platform, kampanya durumu, banka ve geçen süre gibi alanların sipariş davranışlarıyla ilişkisini istatistiksel testlerle göstermek.
+2. İade açıklamalarını NLP ile iade nedeni ve ürün tipi kategorilerine ayırmak.
 
-| Çıktı | Açıklama |
-|---|---|
-| `merge_data.xlsx` | Temizlenmiş, yalnızca TL siparişlerden oluşan analiz datası |
-| `model_features_pre_order.xlsx` | Sipariş anında bilinebilecek model girdileri |
-| `cancellation_model.joblib` | İptal risk modeli |
-| `return_model.joblib` | Deneysel iade modeli |
-| `cancellation_model_metrics.csv` | İptal modeli validation/test metrikleri |
-| `return_model_metrics.csv` | İade modeli validation/test metrikleri |
-| `return_nlp_summary.xlsx` | İade nedeni, ürün tipi ve aylık NLP özetleri |
+## Dashboard ne gösteriyor?
 
-## Klasör ve Python dosyaları
+Dashboard artık tahmin grafiği veya kullanılabilirliği düşük risk modeli göstermiyor. Bunun yerine:
+
+- Grup bazında iptal/iade oranlarını,
+- %95 güven aralıklarını,
+- Ki-kare testlerini ve Cramer V etki büyüklüğünü,
+- Welch t-testlerini ve Cohen d etki büyüklüğünü,
+- `gecen_sure_dk` bantlarına göre davranış oranlarını,
+- NLP ile iade nedeni ve ürün tipi dağılımını,
+- Veri kalitesi uyarılarını
+
+gösterir.
+
+İstatistiksel anlamlılık nedensellik değildir. Bir p-değerinin düşük olması, “bu alan davranışa kesin sebep oluyor” anlamına gelmez. Oran, güven aralığı ve etki büyüklüğü birlikte incelenmelidir.
+
+## Python dosyaları
 
 ### `dashboard.py`
 
-Streamlit dashboard uygulamasıdır. Satış KPI'larını, günlük satış tahminini, NLP iade kategorilerini ve model metriklerini gösterir. Sipariş numarası listesi göstermez; amaç operasyonel detaydan çok yönetici seviyesinde içgörü sunmaktır.
+User dostu Streamlit arayüzüdür. Sipariş numarası gibi operasyonel detayları göstermez; karar vericinin görebileceği özet ve test sonuçlarını sunar.
 
 ### `src/prepare_data.py`
 
-Ham Excel dosyalarını okur ve temizler:
+Ham Excel dosyalarını temizler, teslim/iptal/iade kayıtlarını birleştirir, USD/EUR kayıtlarını çıkarır, durum ve tarih alanlarını standardize eder ve `merge_data.xlsx` üretir.
 
-- Teslim, iptal ve iade dosyalarını birleştirir.
-- USD ve EUR kayıtlarını çıkarır.
-- Tarih feature'ları üretir.
-- İade açıklamalarını sipariş seviyesinde özetler.
-- `merge_data.xlsx` ve `model_features_pre_order.xlsx` oluşturur.
+### `src/statistical_analysis.py`
 
-### `src/data_prep.py`
+İstatistiksel analiz motorudur:
 
-Model eğitiminde kullanılacak işlenmiş dosyaları okur. Hedef kolonları ile model feature'larını ayırır ve zamana göre train/validation/test bölmesi yapar.
+- Wilson %95 oran güven aralığı,
+- Ki-kare testi,
+- Benjamini-Hochberg çoklu test düzeltmesi,
+- Cramer V,
+- Welch t-testi,
+- Cohen d,
+- geçen süre bantları
 
-### `src/train.py`
-
-İptal ve iade modellerini eğitir. Şu anda açıklanabilir bir Logistic Regression baseline kullanır. Sınıf dengesizliği için `class_weight="balanced"` aktiftir. Karar eşiği test setinde değil, validation setinde F1-score maksimize edilerek seçilir.
-
-### `src/evaluate.py`
-
-ROC-AUC, PR-AUC, precision, recall, F1 ve confusion matrix değerlerini hesaplar. Ayrıca validation threshold optimizasyonunu yapar.
-
-### `src/predict.py`
-
-Eğitilmiş `.joblib` modellerini yükleyerek feature dosyası üzerinde risk olasılığı üretir.
+hesaplar. Yeni `merge_data.xlsx` ile tekrar çalışabilir.
 
 ### `src/return_nlp.py`
 
-İade açıklamalarını temizler ve şu iki seviyede sınıflandırır:
+İade açıklamalarını temizler. IBAN, e-posta ve telefon gibi bilgileri metinden çıkarır; iade nedeni ve ürün tipini sınıflandırır. Elle eğitilmiş NLP modeli varsa onu kullanır, metni boş satırlarda kural tabanına döner.
 
-- İade nedeni: beden/kalıp, kalite/hasar, model/renk/beğeni, kargo/paketleme vb.
-- Ürün tipi: terlik, sneakers, çanta, bot, sandalet, babet, loafer vb.
+### `src/train_nlp.py`
 
-IBAN, e-posta ve telefon gibi kişisel/ödeme bilgileri analiz metninden çıkarılır.
-
-### `src/forecast.py`
-
-Günlük gerçekleşen satış veya sipariş adedi için trend ve haftanın günü etkisini kullanan basit bir gelecek tahmini üretir.
+`return_nlp_summary.xlsx` içindeki `manual_category` etiketleriyle TF-IDF + Logistic Regression NLP modelini eğitir.
 
 ### `src/run_pipeline.py`
 
-Veri hazırlama ve model eğitimini tek komutta çalıştırır.
+Veri temizleme, NLP özeti ve istatistiksel raporu tek komutta yeniler.
+
+## Üretilen dosyalar
+
+| Dosya | Amaç |
+|---|---|
+| `data/processed/merge_data.xlsx` | Temizlenmiş ana analiz verisi |
+| `data/processed/quality_report` | Veri kalite ölçümleri |
+| `data/processed/return_nlp_summary.xlsx` | NLP neden/ürün özetleri ve review queue |
+| `data/processed/statistical_report.xlsx` | İstatistiksel testlerin Excel çıktısı |
+| `models/return_nlp_model.joblib` | Elle etiketlenmiş NLP modeli |
+
+Ham veriler `data/raw` altında tutulur ve GitHub'a gönderilmemelidir.
 
 ## Çalıştırma
 
-Önce Excel dosyalarının kapalı olduğundan emin ol.
-
-Ham veriler değiştiğinde:
+Önce Excel dosyalarını kapat:
 
 ```powershell
-cd ..\dogo-satis-analizi
 .\env\Scripts\python.exe -m src.run_pipeline
 ```
 
-Dashboard'u açmak için:
+Elle etiketlenmiş NLP modeli değiştiyse:
+
+```powershell
+.\env\Scripts\python.exe -m src.train_nlp
+.\env\Scripts\python.exe -m src.return_nlp
+```
+
+Dashboard:
 
 ```powershell
 .\env\Scripts\python.exe -m streamlit run dashboard.py
 ```
 
-Tarayıcı adresi:
-
-```text
-http://localhost:8501
-```
-
-8501 portu doluysa:
+İstatistiksel raporu dashboard olmadan üretmek için:
 
 ```powershell
-.\env\Scripts\python.exe -m streamlit run dashboard.py --server.port 8502
+.\env\Scripts\python.exe -m src.statistical_analysis
 ```
 
-## Mevcut bulgular
+## Mevcut veri kalite sonucu
 
-3133 TL sipariş analiz edilmiştir:
+- 3.133 sipariş analiz edildi.
+- Duplicate sipariş bulunmadı.
+- Negatif tutar bulunmadı.
+- Geçersiz sipariş durumu bulunmadı.
+- Sipariş tarihlerinde eksik kayıt bulunmadı.
+- 1 siparişte tutar eksik.
+- 30 açıklamalı iade siparişi ana sipariş dosyasıyla eşleşmedi; bu kayıtlar silinmedi, veri kalite çıktısı olarak korundu.
 
-- Teslim: 2655
-- İptal: 249
-- İade: 229
-- Ortalama sipariş tutarı: yaklaşık 3428 TL
-- İptal oranı: yaklaşık %7,95
-- İade oranı: yaklaşık %7,31
-- Satış tahmini son 30 günlük holdout testinde WAPE: yaklaşık %31,2
+## Mevcut istatistiksel bulgular
 
-İade açıklamalarında en yoğun kategori beden/kalıp uyumsuzluğudur. Ürün tipi dağılımında terlik ve sneakers öne çıkmaktadır.
+- Şehirler en çok sipariş alan 5 şehir ve “Diğer şehirler” olarak gruplanınca iptal ile ilişki görülüyor; Cramer V yaklaşık `0,15`.
+- Ödeme tipi ile iptal davranışı arasında güçlü ilişki görülüyor; Cramer V yaklaşık `0,68`. Bu nedensellik kanıtı değildir; banka, kanal ve operasyon farkları da etkili olabilir.
+- `gecen_sure_dk`, iade edilen ve edilmeyen gruplarda belirgin biçimde farklı; Cohen d yaklaşık `1,49`.
+- `gecen_sure_dk` ile iptal arasında anlamlı fark bulunmadı.
 
-## Model sonuçlarının yorumu
+Banka analizi yalnızca kredi kartı siparişlerinde, platform analizi ise admin/operasyon kayıtları çıkarıldıktan sonra yapılır. Süre analizi 0–2 gün, 3–7 gün, 8–14 gün ve 15+ gün aralıklarını kullanır.
 
-### İptal modeli
+`gecen_sure_dk` sipariş sonrasında oluşan bir alan olabilir. Bu nedenle ilişki analizinde kullanılabilir; sipariş anında bilinmiyorsa gelecekteki risk modeline özellik olarak eklenmemelidir.
 
-Validation setinde seçilen karar eşiği `0.95` olmuştur. Test sonuçları:
+## Sınırlılıklar
 
-- ROC-AUC: `0.846`
-- PR-AUC: `0.558`
-- Precision: `0.391`
-- Recall: `0.563`
-- F1: `0.462`
-
-Bu model başlangıç seviyesinde anlamlı bir sıralama gücüne sahiptir. Eşik yükseltilerek gereksiz risk alarmı azaltılmıştır.
-
-### İade modeli
-
-Test ROC-AUC `0.454` olduğu için şu an kullanılabilir seviyede değildir. Bunun temel sebepleri:
-
-- İade talebi ve tamamlanmış iadenin aynı hedef olmaması.
-- Açıklamalı iade dosyasının ana sipariş dosyasıyla tam eşleşmemesi.
-- Son dönemlerde iade oranının değişmesi.
-- Ürün/SKU bilgilerinin tüm siparişlerde bulunmaması.
-
-Bu nedenle dashboard'da NLP iade kategorileri gösterilir; iade modeli henüz karar modeli olarak önerilmez.
-
-## Sınırlılıklar ve sonraki adımlar
-
-- Ürün tipi × iade nedeni analizi mevcut iade kayıtlarının dağılımını gösterir. Gerçek ürün iade oranı için aynı ürünlerin toplam satış adedi gerekir.
-- Satış tahmini yalnızca yaklaşık 181 günlük veriye dayanır ve başlangıç modelidir.
-- Satış tahmini için yaklaşık %31,2 WAPE, bu modelin yön gösterici bir baseline olduğunu; finansal bütçe tahmini olarak doğrudan kullanılmaması gerektiğini gösterir.
-- Daha güçlü iade modeli için tüm siparişlere SKU/ürün/kategori/numara bilgisi bağlanmalıdır.
-- Sonraki model adımı LightGBM veya CatBoost karşılaştırması ve zaman bazlı backtesting olabilir.
+- Ürün tipi, açıklamalı iade dosyasının ürün adından çıkarılır; tüm satışların ürün paydası olmadığı için gerçek ürün iade oranı hesaplanmaz.
+- 30 eşleşmeyen iade kaydı çözülmeden iade oranı analizinin kapsamı sınırlıdır.
+- İstatistiksel testler ilişki gösterir, nedensellik göstermez.
+- Yeni veri geldiğinde aynı kolon adları ve iş kuralları korunmalıdır.
