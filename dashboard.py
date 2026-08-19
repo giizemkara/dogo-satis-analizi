@@ -39,6 +39,8 @@ orders = load_orders()
     product_reason,
     nlp_review_queue,
     nlp_method,
+    sentiment_summary,
+    sentiment_method,
 ) = load_nlp_data()
 statistical_report = build_statistical_report(orders)
 
@@ -196,7 +198,7 @@ with stat_tabs[1]:
 with stat_tabs[2]:
     duration = statistical_report["duration"]
     st.write(
-        "`gecen_sure_dk` dört eşit büyüklükte banda ayrıldı. Bu bölüm nedensellik "
+        "`gecen_sure_dk` işletme açısından okunabilir dört sabit gün aralığına ayrıldı. Bu bölüm nedensellik "
         "kurmaz; yalnızca gruplar arasındaki gözlenen farkı gösterir."
     )
     duration_chart = px.bar(
@@ -297,4 +299,28 @@ if nlp_method == "tfidf_logistic":
     st.success(
         "Elle etiketli NLP modeli aktif. Model performansı yalnızca etiketli "
         "örneklerde ölçülmüştür; yeni dönemlerde tekrar doğrulanmalıdır."
+    )
+
+st.subheader("İkinci çıktı: müşteri açıklaması tonu")
+st.write(
+    "Bu bölüm iade nedeninden ayrı olarak müşterinin açıklamadaki iletişim tonunu "
+    "gösterir. Gerçek psikolojik duygu durumu değil, yazılı metindeki memnuniyet "
+    "ve şikâyet ifadesidir."
+)
+if sentiment_method == "tfidf_logistic" and not sentiment_summary.empty:
+    sentiment_chart = px.bar(
+        sentiment_summary.sort_values("return_lines"),
+        x="return_lines",
+        y="sentiment",
+        orientation="h",
+        text="return_lines",
+        title="İade açıklamalarında müşteri tonu",
+        labels={"return_lines": "Açıklama adedi", "sentiment": "Müşteri tonu"},
+    )
+    sentiment_chart.update_layout(height=360)
+    st.plotly_chart(sentiment_chart, use_container_width=True)
+else:
+    st.info(
+        "Duygu/ton modeli henüz eğitilmedi. Önce review_queue içindeki "
+        "manual_sentiment sütununu etiketleyip train_sentiment.py dosyasını çalıştırın."
     )

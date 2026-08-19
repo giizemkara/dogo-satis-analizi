@@ -9,6 +9,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_PATH = PROJECT_ROOT / "data" / "raw" / "dogo_iade_aciklamali.xlsx"
 NLP_MODEL_PATH = PROJECT_ROOT / "models" / "return_nlp_model.joblib"
+SENTIMENT_MODEL_PATH = PROJECT_ROOT / "models" / "return_sentiment_model.joblib"
 
 TR_MAP = str.maketrans({
     "ç": "c", "Ç": "C", "ğ": "g", "Ğ": "G",
@@ -129,6 +130,26 @@ def _apply_trained_model(detail):
     return detail, "tfidf_logistic"
 
 
+def _apply_sentiment_model(detail):
+    """Varsa elle etiketlenmiş ton modeliyle açıklamaları sınıflandırır."""
+    detail = detail.copy()
+    detail["model_sentiment"] = pd.NA
+
+    if not SENTIMENT_MODEL_PATH.exists():
+        return detail, "not_trained"
+
+    artifact = joblib.load(SENTIMENT_MODEL_PATH)
+    model = artifact["model"]
+    mask = detail["normalized_reason"].fillna("").astype(str).str.strip().ne("")
+
+    if mask.any():
+        detail.loc[mask, "model_sentiment"] = model.predict(
+            detail.loc[mask, "normalized_reason"]
+        )
+
+    return detail, "tfidf_logistic"
+
+
 def load_return_nlp(raw_path=None):
     raw_path = Path(raw_path) if raw_path else RAW_PATH
     detail = pd.read_excel(raw_path)
@@ -151,6 +172,7 @@ def load_return_nlp(raw_path=None):
     )
     detail["product_type"] = detail["urun_adi"].apply(classify_product_type)
     detail, nlp_method = _apply_trained_model(detail)
+    detail, sentiment_method = _apply_sentiment_model(detail)
     category_column = (
         "model_category"
         if nlp_method == "tfidf_logistic"
@@ -197,6 +219,27 @@ def load_return_nlp(raw_path=None):
         .rename(columns={category_column: "primary_category"})
     )
 
+    if sentiment_method == "tfidf_logistic":
+        sentiment_summary = (
+            detail.groupby("model_sentiment")
+            .agg(
+                return_lines=("siparis_no", "size"),
+                unique_orders=("siparis_no", "nunique"),
+            )
+            .reset_index()
+            .rename(columns={"model_sentiment": "sentiment"})
+            .sort_values("return_lines", ascending=False)
+        )
+        sentiment_summary["share_of_return_lines"] = (
+            sentiment_summary["return_lines"]
+            / sentiment_summary["return_lines"].sum()
+            * 100
+        )
+    else:
+        sentiment_summary = pd.DataFrame(
+            columns=["sentiment", "return_lines", "unique_orders", "share_of_return_lines"]
+        )
+
     review_queue = detail[
         (detail["primary_category"] == "Diğer / Belirsiz")
         | detail["detected_categories"].str.contains(" | ", regex=False)
@@ -214,6 +257,10 @@ def load_return_nlp(raw_path=None):
         review_queue["model_category"] = detail.loc[
             review_queue.index, "model_category"
         ].to_numpy()
+    if "model_sentiment" in detail.columns:
+        review_queue["model_sentiment"] = detail.loc[
+            review_queue.index, "model_sentiment"
+        ].to_numpy()
 
     return (
         detail,
@@ -223,6 +270,8 @@ def load_return_nlp(raw_path=None):
         product_reason,
         review_queue,
         nlp_method,
+        sentiment_summary,
+        sentiment_method,
     )
 
 
@@ -235,16 +284,23 @@ def export_nlp_summary(raw_path=None, output_dir=None):
         product_reason,
         review_queue,
         nlp_method,
+        sentiment_summary,
+        sentiment_method,
     ) = load_return_nlp(raw_path)
     output_dir = Path(output_dir) if output_dir else PROJECT_ROOT / "data" / "processed"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "return_nlp_summary.xlsx"
 
-    # Kullanıcının daha önce doldurduğu manual_category kolonunu koru.
+    # Kullanıcının daha önce doldurduğu manuel etiketleri koru.
     if output_path.exists():
         try:
             previous_queue = pd.read_excel(output_path, sheet_name="review_queue")
-            if {"review_id", "manual_category"}.issubset(previous_queue.columns):
+            manual_fields = [
+                field
+                for field in ["manual_category", "manual_sentiment"]
+                if field in previous_queue.columns
+            ]
+            if "review_id" in previous_queue.columns and manual_fields:
                 same_queue = (
                     len(previous_queue) == len(review_queue)
                     and previous_queue["review_id"].reset_index(drop=True).equals(
@@ -253,7 +309,7 @@ def export_nlp_summary(raw_path=None, output_dir=None):
                 )
                 if same_queue:
                     review_queue = review_queue.merge(
-                        previous_queue[["review_id", "manual_category"]],
+                        previous_queue[["review_id", *manual_fields]],
                         on="review_id",
                         how="left",
                     )
@@ -261,7 +317,7 @@ def export_nlp_summary(raw_path=None, output_dir=None):
                     previous_queue.columns
                 ):
                     manual_labels = previous_queue[
-                        ["normalized_reason", "product_type", "manual_category"]
+                        ["normalized_reason", "product_type", *manual_fields]
                     ].drop_duplicates(
                         subset=["normalized_reason", "product_type"]
                     )
@@ -270,21 +326,26 @@ def export_nlp_summary(raw_path=None, output_dir=None):
                         on=["normalized_reason", "product_type"],
                         how="left",
                     )
-                if "manual_category" in review_queue.columns:
-                    empty_reason = (
-                        review_queue["normalized_reason"]
-                        .fillna("")
-                        .astype(str)
-                        .str.strip()
-                        .eq("")
-                    )
-                    review_queue.loc[
-                        empty_reason & review_queue["manual_category"].isna(),
-                        "manual_category",
-                    ] = "Diğer / Belirsiz"
         except Exception:
             # Eski dosya bozuksa veya açıkken okunamıyorsa yeni çıktı üretilebilir.
             pass
+
+    if "manual_category" not in review_queue.columns:
+        review_queue["manual_category"] = pd.NA
+    if "manual_sentiment" not in review_queue.columns:
+        review_queue["manual_sentiment"] = pd.NA
+
+    empty_reason = (
+        review_queue["normalized_reason"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("")
+    )
+    review_queue.loc[
+        empty_reason & review_queue["manual_category"].isna(),
+        "manual_category",
+    ] = "Diğer / Belirsiz"
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         summary.to_excel(writer, sheet_name="reason_summary", index=False)
@@ -292,6 +353,7 @@ def export_nlp_summary(raw_path=None, output_dir=None):
         product_reason.to_excel(writer, sheet_name="product_reason", index=False)
         monthly.to_excel(writer, sheet_name="monthly_reason", index=False)
         review_queue.to_excel(writer, sheet_name="review_queue", index=False)
+        sentiment_summary.to_excel(writer, sheet_name="sentiment_summary", index=False)
 
     print(f"NLP özeti kaydedildi: {output_path} ({nlp_method})")
     return output_path

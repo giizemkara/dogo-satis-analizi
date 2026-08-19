@@ -55,6 +55,10 @@ hesaplar. Yeni `merge_data.xlsx` ile tekrar çalışabilir.
 
 `return_nlp_summary.xlsx` içindeki `manual_category` etiketleriyle TF-IDF + Logistic Regression NLP modelini eğitir.
 
+### `src/train_sentiment.py`
+
+`return_nlp_summary.xlsx` içindeki `manual_sentiment` etiketleriyle müşteri açıklaması tonunu sınıflandıran ikinci NLP modelini eğitir. Bu model iade nedeni modelinden ayrıdır; iade olasılığı tahmin etmez.
+
 ### `src/run_pipeline.py`
 
 Veri temizleme, NLP özeti ve istatistiksel raporu tek komutta yeniler.
@@ -83,6 +87,13 @@ Elle etiketlenmiş NLP modeli değiştiyse:
 
 ```powershell
 .\env\Scripts\python.exe -m src.train_nlp
+.\env\Scripts\python.exe -m src.return_nlp
+```
+
+Duygu/ton modelini kullanmak için önce `NLP_ETIKETLEME_REHBERI.md` dosyasındaki kurallara göre `review_queue` içindeki `manual_sentiment` sütununu doldurun. Ardından:
+
+```powershell
+.\env\Scripts\python.exe -m src.train_sentiment
 .\env\Scripts\python.exe -m src.return_nlp
 ```
 
