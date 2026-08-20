@@ -8,9 +8,6 @@ Projenin iki ana çıktısı vardır:
 2. İade açıklamalarını NLP ile iade nedeni ve ürün tipi kategorilerine ayırmak.
 
 ## Dashboard ne gösteriyor?
-
-Dashboard artık tahmin grafiği veya kullanılabilirliği düşük risk modeli göstermiyor. Bunun yerine:
-
 - Grup bazında iptal/iade oranlarını,
 - %95 güven aralıklarını,
 - Ki-kare testlerini ve Cramer V etki büyüklüğünü,
